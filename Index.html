@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESS Energy Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8f9fa;
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .dashboard-header h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .dashboard-header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .chart-container {
+            padding: 30px;
+            position: relative;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: white;
+        }
+
+        /* Axis dots styling */
+        .major-tick-dot {
+            fill: #333;
+            r: 3;
+        }
+
+        .minor-tick-dot {
+            fill: #bbb;
+            r: 1.5;
+        }
+
+        /* Axis labels */
+        .axis-label {
+            font-size: 14px;
+            font-weight: 400;
+            fill: #666;
+        }
+
+        .axis-title {
+            font-size: 14px;
+            font-weight: 400;
+            fill: #666;
+        }
+
+        /* Lines styling */
+        .line-green {
+            fill: none;
+            stroke: #22c55e;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .line-blue {
+            fill: none;
+            stroke: #3b82f6;
+            stroke-width: 3;
+            stroke-dasharray: 8,4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Specific data points (only at 12pm like in image) */
+        .data-point {
+            fill: white;
+            stroke-width: 2;
+            r: 4;
+            cursor: pointer;
+        }
+
+        .data-point.green {
+            stroke: #22c55e;
+        }
+
+        .data-point.blue {
+            stroke: #3b82f6;
+        }
+
+        /* Interactive hover points */
+        .hover-point {
+            fill: white;
+            stroke-width: 2;
+            r: 4;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .hover-point.green {
+            stroke: #22c55e;
+        }
+
+        .hover-point.blue {
+            stroke: #3b82f6;
+        }
+
+        .hover-point.visible {
+            opacity: 1;
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .tooltip-time {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #ffc107;
+        }
+
+        .tooltip-value {
+            margin: 2px 0;
+        }
+
+        .tooltip-value.green {
+            color: #28a745;
+        }
+
+        .tooltip-value.blue {
+            color: #4285f4;
+        }
+
+        /* Hover line */
+        .hover-line {
+            stroke: #999;
+            stroke-width: 1;
+            stroke-dasharray: 3,3;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .hover-line.visible {
+            opacity: 0.7;
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .legend-line.green {
+            background: #22c55e;
+        }
+
+        .legend-line.blue {
+            background: #3b82f6;
+            background-image: repeating-linear-gradient(
+                90deg,
+                #3b82f6,
+                #3b82f6 8px,
+                transparent 8px,
+                transparent 12px
+            );
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        .control-btn:hover {
+            background: #495057;
+            transform: translateY(-1px);
+        }
+
+        .control-btn.active {
+            background: #007bff;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .dashboard-header {
+                padding: 15px;
+            }
+
+            .dashboard-header h1 {
+                font-size: 1.5rem;
+            }
+
+            .chart-container {
+                padding: 20px 15px;
+            }
+
+            .chart-wrapper {
+                height: 400px;
+            }
+
+            .legend {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+
+            .controls {
+                gap: 10px;
+            }
+
+            .control-btn {
+                font-size: 12px;
+                padding: 6px 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .chart-wrapper {
+                height: 350px;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Energy Storage System Dashboard</h1>
+            <p>Real-time Energy Consumption & Generation Analysis</p>
+        </div>
+        
+        <div class="chart-container">
+            <div class="chart-wrapper">
+                <svg id="chart"></svg>
+            </div>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-line green"></div>
+                    <span>Energy Generation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line blue"></div>
+                    <span>Energy Consumption</span>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button class="control-btn active" data-action="reset">Reset View</button>
+                <button class="control-btn" data-action="zoom-in">Zoom In</button>
+                <button class="control-btn" data-action="zoom-out">Zoom Out</button>
+                <button class="control-btn" data-action="pan-mode">Pan Mode</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip">
+        <div class="tooltip-time"></div>
+        <div class="tooltip-value green">Generation: <span class="value"></span></div>
+        <div class="tooltip-value blue">Consumption: <span class="value"></span></div>
+    </div>
+
+    <script>
+        class ESSChart {
+            constructor() {
+                this.data = this.generateData();
+                this.margin = { top: 20, right: 30, bottom: 60, left: 80 };
+                this.setupChart();
+                this.renderChart();
+                this.setupInteractions();
+            }
+
+            generateData() {
+                // Data exactly matching the image pattern
+                const hours = [];
+                for (let i = 0; i < 24; i++) {
+                    hours.push(i);
+                }
+
+                // Green line data (matching image curve)
+                const greenData = [
+                    2.5, 2.4, 2.3, 2.5, 2.6, 2.5, 2.8, 3.2, 4.2, 4.8, 
+                    5.0, 5.2, 5.5, 5.7, 5.6, 5.4, 5.2, 4.8, 4.5, 4.0, 
+                    3.5, 3.2, 2.9, 2.6
+                ];
+
+                // Blue line data (matching image volatility)
+                const blueData = [
+                    3.5, 3.2, 3.0, 3.3, 2.8, 2.7, 2.9, 3.8, 4.2, 3.8, 
+                    4.1, 4.6, 4.0, 3.7, 2.1, 2.0, 2.8, 4.2, 5.2, 4.8, 
+                    4.3, 4.1, 3.8, 3.6
+                ];
+
+                return hours.map(hour => ({
+                    hour,
+                    time: this.formatTime(hour),
+                    green: greenData[hour],
+                    blue: blueData[hour]
+                }));
+            }
+
+            formatTime(hour) {
+                if (hour === 0) return '12 am';
+                if (hour < 12) return `${hour} am`;
+                if (hour === 12) return '12 pm';
+                return `${hour - 12} pm`;
+            }
+
+            setupChart() {
+                const container = d3.select('.chart-wrapper');
+                const containerRect = container.node().getBoundingClientRect();
+                
+                this.width = containerRect.width - this.margin.left - this.margin.right;
+                this.height = containerRect.height - this.margin.top - this.margin.bottom;
+
+                this.svg = d3.select('#chart')
+                    .attr('width', containerRect.width)
+                    .attr('height', containerRect.height);
+
+                this.g = this.svg.append('g')
+                    .attr('transform', `translate(${this.margin.left}, ${this.margin.top})`);
+
+                // Scales - start from 12am with proper margin
+                this.xScale = d3.scaleLinear()
+                    .domain([0, 23])
+                    .range([0, this.width]);
+
+                this.yScale = d3.scaleLinear()
+                    .domain([0, 6])
+                    .range([this.height, 0]);
+
+                // Line generators
+                this.lineGreen = d3.line()
+                    .x(d => this.xScale(d.hour))
+                    .y(d => this.yScale(d.green))
+                    .curve(d3.curveCardinal.tension(0.5));
+
+                this.lineBlue = d3.line()
+                    .x(d => this.xScale(d.hour))
+                    .y(d => this.yScale(d.blue))
+                    .curve(d3.curveCardinal.tension(0.5));
+
+                // Zoom behavior
+                this.zoom = d3.zoom()
+                    .scaleExtent([1, 8])
+                    .extent([[0, 0], [this.width, this.height]])
+                    .on('zoom', (event) => this.handleZoom(event));
+
+                this.svg.call(this.zoom);
+            }
+
+            renderChart() {
+                // Clear previous content
+                this.g.selectAll('*').remove();
+
+                // Axes with proper dot pattern
+                this.renderAxes();
+
+                // Lines
+                this.renderLines();
+
+                // No permanent data points - removed completely
+                
+                // Hover elements
+                this.setupHoverElements();
+            }
+
+            renderAxes() {
+                // X-axis dots
+                const xMajorTicks = [0, 3, 6, 9, 12, 15, 18, 21]; // Major time points
+                const xMinorTicks = [1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23]; // Other hours
+                
+                // Major X-axis dots (dark)
+                xMajorTicks.forEach(tick => {
+                    this.g.append('circle')
+                        .attr('class', 'major-tick-dot')
+                        .attr('cx', this.xScale(tick))
+                        .attr('cy', this.height + 12);
+                    
+                    // Label
+                    this.g.append('text')
+                        .attr('class', 'axis-label')
+                        .attr('x', this.xScale(tick))
+                        .attr('y', this.height + 30)
+                        .style('text-anchor', 'middle')
+                        .style('font-size', '12px')
+                        .text(this.formatTime(tick));
+                });
+
+                // Minor X-axis dots (light)
+                xMinorTicks.forEach(tick => {
+                    this.g.append('circle')
+                        .attr('class', 'minor-tick-dot')
+                        .attr('cx', this.xScale(tick))
+                        .attr('cy', this.height + 12);
+                });
+
+                // Y-axis dots - all same style (0,1,2,3,4,5,6)
+                const yTicks = [0, 1, 2, 3, 4, 5, 6];
+                
+                yTicks.forEach(tick => {
+                    // Y-axis dot
+                    this.g.append('circle')
+                        .attr('class', 'major-tick-dot')
+                        .attr('cx', -12)
+                        .attr('cy', this.yScale(tick));
+                    
+                    // Label
+                    this.g.append('text')
+                        .attr('class', 'axis-label')
+                        .attr('x', -20)
+                        .attr('y', this.yScale(tick) + 4)
+                        .style('text-anchor', 'end')
+                        .style('font-size', '12px')
+                        .text(tick);
+                });
+
+                // Y-axis title
+                this.g.append('text')
+                    .attr('class', 'axis-title')
+                    .attr('transform', 'rotate(-90)')
+                    .attr('y', -50)
+                    .attr('x', -this.height / 2)
+                    .style('text-anchor', 'middle')
+                    .style('font-size', '14px')
+                    .text('kilowatts');
+            }
+
+            renderLines() {
+                // Green line
+                this.g.append('path')
+                    .datum(this.data)
+                    .attr('class', 'line-green')
+                    .attr('d', this.lineGreen);
+
+                // Blue line
+                this.g.append('path')
+                    .datum(this.data)
+                    .attr('class', 'line-blue')
+                    .attr('d', this.lineBlue);
+            }
+
+            renderSpecificDataPoints() {
+                // Only add circles at 12 pm like in image
+                const dataPoint = this.data[12]; // 12 pm
+                
+                // Green point at 12 pm
+                this.g.append('circle')
+                    .attr('class', 'data-point green')
+                    .attr('cx', this.xScale(dataPoint.hour))
+                    .attr('cy', this.yScale(dataPoint.green));
+
+                // Blue point at 12 pm
+                this.g.append('circle')
+                    .attr('class', 'data-point blue')
+                    .attr('cx', this.xScale(dataPoint.hour))
+                    .attr('cy', this.yScale(dataPoint.blue));
+            }
+
+            setupHoverElements() {
+                // Hover line
+                this.hoverLine = this.g.append('line')
+                    .attr('class', 'hover-line')
+                    .attr('y1', 0)
+                    .attr('y2', this.height);
+
+                // Hover points (initially hidden)
+                this.hoverPointGreen = this.g.append('circle')
+                    .attr('class', 'hover-point green');
+
+                this.hoverPointBlue = this.g.append('circle')
+                    .attr('class', 'hover-point blue');
+            }
+
+            setupInteractions() {
+                // Create invisible overlay for mouse tracking
+                this.g.append('rect')
+                    .attr('width', this.width)
+                    .attr('height', this.height)
+                    .style('fill', 'none')
+                    .style('pointer-events', 'all')
+                    .on('mousemove', (event) => {
+                        const [mouseX] = d3.pointer(event, this.g.node());
+                        this.handleMouseMove(mouseX, event);
+                    })
+                    .on('mouseleave', () => this.hideHoverElements())
+                    .on('click', (event) => {
+                        const [mouseX] = d3.pointer(event, this.g.node());
+                        this.handleClick(mouseX);
+                    });
+
+                // Control buttons
+                d3.selectAll('.control-btn').on('click', (event) => {
+                    const action = event.target.dataset.action;
+                    this.handleControlAction(action);
+                    
+                    d3.selectAll('.control-btn').classed('active', false);
+                    d3.select(event.target).classed('active', true);
+                });
+
+                // Resize handler
+                window.addEventListener('resize', () => {
+                    this.handleResize();
+                });
+            }
+
+            handleMouseMove(mouseX, event) {
+                if (mouseX >= 0 && mouseX <= this.width) {
+                    // Calculate closest hour
+                    const hour = Math.round(this.xScale.invert(mouseX));
+                    if (hour >= 0 && hour <= 23) {
+                        const dataPoint = this.data[hour];
+                        const xPos = this.xScale(dataPoint.hour);
+
+                        // Show hover line
+                        this.hoverLine
+                            .attr('x1', xPos)
+                            .attr('x2', xPos)
+                            .classed('visible', true);
+
+                        // Show hover points at exact data values
+                        this.hoverPointGreen
+                            .attr('cx', xPos)
+                            .attr('cy', this.yScale(dataPoint.green))
+                            .classed('visible', true);
+
+                        this.hoverPointBlue
+                            .attr('cx', xPos)
+                            .attr('cy', this.yScale(dataPoint.blue))
+                            .classed('visible', true);
+
+                        // Show tooltip
+                        this.showTooltip(event, dataPoint);
+                    }
+                }
+            }
+
+            hideHoverElements() {
+                this.hoverLine.classed('visible', false);
+                this.hoverPointGreen.classed('visible', false);
+                this.hoverPointBlue.classed('visible', false);
+                this.hideTooltip();
+            }
+
+            handleClick(mouseX) {
+                const hour = Math.round(this.xScale.invert(mouseX));
+                if (hour >= 0 && hour <= 23) {
+                    const dataPoint = this.data[hour];
+                    console.log(`Clicked on ${dataPoint.time}: Generation=${dataPoint.green}kW, Consumption=${dataPoint.blue}kW`);
+                }
+            }
+
+            showTooltip(event, d) {
+                const tooltip = d3.select('#tooltip');
+                
+                tooltip.select('.tooltip-time').text(d.time);
+                tooltip.select('.tooltip-value.green .value').text(`${d.green.toFixed(1)} kW`);
+                tooltip.select('.tooltip-value.blue .value').text(`${d.blue.toFixed(1)} kW`);
+
+                const [x, y] = d3.pointer(event, document.body);
+                
+                tooltip
+                    .style('left', `${x + 10}px`)
+                    .style('top', `${y - 60}px`)
+                    .classed('visible', true);
+            }
+
+            hideTooltip() {
+                d3.select('#tooltip').classed('visible', false);
+            }
+
+            handleZoom(event) {
+                const { transform } = event;
+                
+                // Update scales
+                const newXScale = transform.rescaleX(this.xScale);
+                const newYScale = transform.rescaleY(this.yScale);
+
+                // Update lines
+                const newLineGreen = d3.line()
+                    .x(d => newXScale(d.hour))
+                    .y(d => newYScale(d.green))
+                    .curve(d3.curveCardinal.tension(0.5));
+
+                const newLineBlue = d3.line()
+                    .x(d => newXScale(d.hour))
+                    .y(d => newYScale(d.blue))
+                    .curve(d3.curveCardinal.tension(0.5));
+
+                this.g.select('.line-green').attr('d', newLineGreen);
+                this.g.select('.line-blue').attr('d', newLineBlue);
+
+                // Update specific points
+                this.g.selectAll('.data-point.green')
+                    .attr('cx', d => newXScale(d.hour))
+                    .attr('cy', d => newYScale(d.green));
+
+                this.g.selectAll('.data-point.blue')
+                    .attr('cx', d => newXScale(d.hour))
+                    .attr('cy', d => newYScale(d.blue));
+            }
+
+            handleControlAction(action) {
+                switch(action) {
+                    case 'reset':
+                        this.svg.transition().duration(750).call(
+                            this.zoom.transform,
+                            d3.zoomIdentity
+                        );
+                        break;
+                    case 'zoom-in':
+                        this.svg.transition().duration(300).call(
+                            this.zoom.scaleBy, 1.5
+                        );
+                        break;
+                    case 'zoom-out':
+                        this.svg.transition().duration(300).call(
+                            this.zoom.scaleBy, 1 / 1.5
+                        );
+                        break;
+                    case 'pan-mode':
+                        console.log('Pan mode toggled');
+                        break;
+                }
+            }
+
+            handleResize() {
+                const container = d3.select('.chart-wrapper');
+                const containerRect = container.node().getBoundingClientRect();
+                
+                this.width = containerRect.width - this.margin.left - this.margin.right;
+                this.height = containerRect.height - this.margin.top - this.margin.bottom;
+
+                this.svg
+                    .attr('width', containerRect.width)
+                    .attr('height', containerRect.height);
+
+                this.xScale.range([0, this.width]);
+                this.yScale.range([this.height, 0]);
+
+                this.renderChart();
+                this.setupInteractions();
+            }
+        }
+
+        // Initialize the chart when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new ESSChart();
+        });
+    </script>
+</body>
+</html>
